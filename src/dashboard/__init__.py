@@ -1,0 +1,1 @@
+# Inicializační soubor pro Python balíček
