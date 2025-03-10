@@ -208,6 +208,17 @@ if 'Typ_dodavky' in df.columns:
 cena_sloupec = 'Cena_tepla' if 'Cena_tepla' in df.columns else 'Cena'
 min_cena = df[cena_sloupec].min() if not df.empty else 0
 max_cena = df[cena_sloupec].max() if not df.empty else 1000
+
+# Ošetření extrémních hodnot - nastavení rozumného maxima
+if max_cena > 5000:  # Pokud je maximální cena nereálně vysoká
+    print(f"Detekována extrémně vysoká cena: {max_cena} Kč/GJ. Nastavuji rozumné maximum.")
+    # Filtrujeme extrémní hodnoty a hledáme druhou nejvyšší cenu
+    rozumne_ceny = df[df[cena_sloupec] < 5000][cena_sloupec]
+    if not rozumne_ceny.empty:
+        max_cena = rozumne_ceny.max()
+    else:
+        max_cena = 2500  # Defaultní maximum, pokud nemáme jiné rozumné hodnoty
+
 # Zaokrouhlení pro lepší zobrazení
 min_cena = int(min_cena) if not pd.isna(min_cena) else 0
 max_cena = int(max_cena) + 100 if not pd.isna(max_cena) else 1000
@@ -1874,6 +1885,12 @@ def aktualizuj_mapu_cr(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_
                 print(f"Počet lokalit se souřadnicemi: {len(lokality_data)}")
                 
                 if not lokality_data.empty:
+                    # Ošetření extrémních hodnot cen
+                    max_zobrazena_cena = 2500  # Maximální zobrazovaná cena
+                    lokality_data[cena_sloupec] = lokality_data[cena_sloupec].apply(
+                        lambda x: min(x, max_zobrazena_cena)
+                    )
+                    
                     # Vytvoření seznamů pro souřadnice a texty
                     lats = []
                     lons = []
@@ -1884,7 +1901,17 @@ def aktualizuj_mapu_cr(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_
                     for _, row in lokality_data.iterrows():
                         lats.append(row['lat'])
                         lons.append(row['lon'])
-                        texts.append(f"{row['Lokalita']} ({row[cena_sloupec]:.2f} Kč/GJ)")
+                        
+                        # Přidání informace o původní ceně, pokud byla omezena
+                        puvodni_cena = row[cena_sloupec]
+                        zobrazena_cena = min(puvodni_cena, max_zobrazena_cena)
+                        
+                        if puvodni_cena > max_zobrazena_cena:
+                            text = f"{row['Lokalita']} ({zobrazena_cena:.2f} Kč/GJ, původní: {puvodni_cena:.2f} Kč/GJ)"
+                        else:
+                            text = f"{row['Lokalita']} ({zobrazena_cena:.2f} Kč/GJ)"
+                            
+                        texts.append(text)
                         colors.append(kraje_barvy.get(row['Kod_kraje'], '#3a86ff'))
                         sizes.append(10)
                     
