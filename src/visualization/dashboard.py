@@ -1158,242 +1158,172 @@ def aktualizuj_graf_mezirocniho_narustu(typ_dodavky, kraj_nazev, vybrana_paliva,
         
         # Pokud je vybrána konkrétní lokalita, zobrazíme vývoj cen pro tuto lokalitu
         if lokalita:
-            # Výpočet průměrných cen podle roku a typu ceny
-            agregace = filtrovana_data.groupby(['Rok', 'Typ_ceny'])['Cena'].mean().reset_index()
-            
-            # Vytvoření pivot tabulky s roky jako indexem a typy cen jako sloupci
-            pivot = agregace.pivot(index='Rok', columns='Typ_ceny', values='Cena')
-            
-            # Výpočet meziročního nárůstu pro výsledné ceny
-            if 'Výsledná' in pivot.columns:
-                pivot['Meziroční_nárůst'] = pivot['Výsledná'].pct_change() * 100
-            else:
-                # Pokud nemáme sloupec 'Výsledná', použijeme první dostupný sloupec
-                if not pivot.empty and len(pivot.columns) > 0:
-                    first_col = pivot.columns[0]
-                    pivot['Meziroční_nárůst'] = pivot[first_col].pct_change() * 100
+            try:
+                # Výpočet průměrných cen podle roku a typu ceny
+                agregace = filtrovana_data.groupby(['Rok', 'Typ_ceny'])['Cena'].mean().reset_index()
+                
+                # Vytvoření pivot tabulky s roky jako indexem a typy cen jako sloupci
+                pivot = agregace.pivot(index='Rok', columns='Typ_ceny', values='Cena')
+                
+                # Výpočet meziročního nárůstu pro výsledné ceny
+                if 'Výsledná' in pivot.columns:
+                    pivot['Meziroční_nárůst'] = pivot['Výsledná'].pct_change() * 100
                 else:
-                    # Pokud nemáme žádná data, vytvoříme prázdný graf
-                    fig = go.Figure()
-                    fig.update_layout(
-                        title={
-                            'text': f"Meziroční nárůst cen tepla - {lokalita}<br><sup>" + popis_filtru + "</sup>",
-                            'x': 0.5,
-                            'xanchor': 'center',
-                            'font': {'size': 16, 'color': COLORS['dark']}
-                        },
-                        xaxis_title="Rok",
-                        yaxis_title="Meziroční nárůst [%]",
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        height=400,
-                        margin={"r": 20, "t": 60, "l": 20, "b": 20}
-                    )
-                    fig.add_annotation(
-                        text="Nedostatek dat pro výpočet meziročního nárůstu",
-                        xref="paper", yref="paper",
-                        x=0.5, y=0.5,
-                        showarrow=False,
-                        font=dict(size=14, color=COLORS['dark'])
-                    )
-                    return fig
-            
-            # Resetování indexu
-            pivot = pivot.reset_index()
-            
-            # Vytvoříme dva samostatné grafy místo jednoho s dvěma osami
-            # Graf 1: Meziroční nárůst
-            fig1 = go.Figure()
-            fig1.add_trace(go.Bar(
-                x=pivot['Rok'],
-                y=pivot['Meziroční_nárůst'],
-                name='Meziroční nárůst [%]',
-                marker_color=COLORS['accent'],
-                hovertemplate='Rok: %{x}<br>Meziroční nárůst: %{y:.2f}%<extra></extra>'
-            ))
-            
-            fig1.update_layout(
-                title={
-                    'text': f"Meziroční nárůst cen tepla - {lokalita}<br><sup>" + popis_filtru + "</sup>",
-                    'x': 0.5,
-                    'xanchor': 'center',
-                    'font': {'size': 16, 'color': COLORS['dark']}
-                },
-                xaxis=dict(
-                    title='Rok',
-                    tickmode='linear',
-                    dtick=1
-                ),
-                yaxis=dict(
-                    title='Meziroční nárůst [%]',
-                    titlefont=dict(color=COLORS['accent']),
-                    tickfont=dict(color=COLORS['accent'])
-                ),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                margin=dict(l=50, r=50, t=80, b=50),
-                height=400
-            )
-            
-            # Graf 2: Vývoj cen
-            fig2 = go.Figure()
-            if 'Výsledná' in pivot.columns:
-                fig2.add_trace(go.Scatter(
-                    x=pivot['Rok'],
-                    y=pivot['Výsledná'],
-                    name='Cena tepla [Kč/GJ]',
-                    mode='lines+markers',
-                    marker=dict(color=COLORS['primary']),
-                    line=dict(color=COLORS['primary'], width=2),
-                    hovertemplate='Rok: %{x}<br>Cena: %{y:.2f} Kč/GJ<extra></extra>'
-                ))
-            
-            fig2.update_layout(
-                title={
-                    'text': f"Vývoj cen tepla - {lokalita}<br><sup>" + popis_filtru + "</sup>",
-                    'x': 0.5,
-                    'xanchor': 'center',
-                    'font': {'size': 16, 'color': COLORS['dark']}
-                },
-                xaxis=dict(
-                    title='Rok',
-                    tickmode='linear',
-                    dtick=1
-                ),
-                yaxis=dict(
-                    title='Cena tepla [Kč/GJ]',
-                    titlefont=dict(color=COLORS['primary']),
-                    tickfont=dict(color=COLORS['primary'])
-                ),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                margin=dict(l=50, r=50, t=80, b=50),
-                height=400
-            )
-            
-            # Kombinujeme grafy do jednoho pomocí subplots
-            from plotly.subplots import make_subplots
-            
-            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1,
-                               subplot_titles=(f"Meziroční nárůst cen tepla - {lokalita}", f"Vývoj cen tepla - {lokalita}"))
-            
-            # Přidáme stopy z prvního grafu
-            for trace in fig1.data:
-                fig.add_trace(trace, row=1, col=1)
-            
-            # Přidáme stopy z druhého grafu
-            for trace in fig2.data:
-                fig.add_trace(trace, row=2, col=1)
-            
-            # Nastavení layoutu
-            fig.update_layout(
-                title={
-                    'text': f"Analýza cen tepla - {lokalita}<br><sup>" + popis_filtru + "</sup>",
-                    'x': 0.5,
-                    'xanchor': 'center',
-                    'font': {'size': 16, 'color': COLORS['dark']}
-                },
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                height=600,  # Zvětšíme výšku pro dva grafy
-                margin=dict(l=50, r=50, t=80, b=50),
-                showlegend=True,
-                legend=dict(
-                    orientation='h',
-                    yanchor='bottom',
-                    y=1.02,
-                    xanchor='right',
-                    x=1
+                    # Pokud nemáme sloupec 'Výsledná', použijeme první dostupný sloupec
+                    if not pivot.empty and len(pivot.columns) > 0:
+                        first_col = pivot.columns[0]
+                        pivot['Meziroční_nárůst'] = pivot[first_col].pct_change() * 100
+                    else:
+                        # Pokud nemáme žádná data, vytvoříme prázdný graf
+                        fig = go.Figure()
+                        fig.update_layout(
+                            title={
+                                'text': f"Meziroční nárůst cen tepla - {lokalita}<br><sup>" + popis_filtru + "</sup>",
+                                'x': 0.5,
+                                'xanchor': 'center',
+                                'font': {'size': 16, 'color': COLORS['dark']}
+                            },
+                            xaxis_title="Rok",
+                            yaxis_title="Meziroční nárůst [%]",
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            height=400,
+                            margin={"r": 20, "t": 60, "l": 20, "b": 20}
+                        )
+                        fig.add_annotation(
+                            text="Nedostatek dat pro výpočet meziročního nárůstu",
+                            xref="paper", yref="paper",
+                            x=0.5, y=0.5,
+                            showarrow=False,
+                            font=dict(size=14, color=COLORS['dark'])
+                        )
+                        return fig
+                
+                # Resetování indexu
+                pivot = pivot.reset_index()
+                
+                # Vytvoříme dva samostatné grafy místo jednoho s dvěma osami
+                # Použijeme subplots pro vytvoření dvou grafů nad sebou
+                from plotly.subplots import make_subplots
+                
+                fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1,
+                                   subplot_titles=(f"Meziroční nárůst cen tepla", f"Vývoj cen tepla"))
+                
+                # Přidáme graf meziročního nárůstu (sloupcový)
+                fig.add_trace(
+                    go.Bar(
+                        x=pivot['Rok'],
+                        y=pivot['Meziroční_nárůst'],
+                        name='Meziroční nárůst [%]',
+                        marker_color=COLORS['accent'],
+                        hovertemplate='Rok: %{x}<br>Meziroční nárůst: %{y:.2f}%<extra></extra>'
+                    ),
+                    row=1, col=1
                 )
-            )
-            
-            # Nastavení os
-            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)', row=1, col=1)
-            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)', title_text="Rok", row=2, col=1)
-            
-            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)', 
-                            title_text="Meziroční nárůst [%]", title_font=dict(color=COLORS['accent']),
-                            tickfont=dict(color=COLORS['accent']), row=1, col=1)
-            
-            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)', 
-                            title_text="Cena tepla [Kč/GJ]", title_font=dict(color=COLORS['primary']),
-                            tickfont=dict(color=COLORS['primary']), row=2, col=1)
-            
+                
+                # Přidáme graf vývoje cen (čárový)
+                if 'Výsledná' in pivot.columns:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=pivot['Rok'],
+                            y=pivot['Výsledná'],
+                            name='Cena tepla [Kč/GJ]',
+                            mode='lines+markers',
+                            marker=dict(color=COLORS['primary']),
+                            line=dict(color=COLORS['primary'], width=2),
+                            hovertemplate='Rok: %{x}<br>Cena: %{y:.2f} Kč/GJ<extra></extra>'
+                        ),
+                        row=2, col=1
+                    )
+                
+                # Nastavení layoutu
+                fig.update_layout(
+                    title={
+                        'text': f"Analýza cen tepla - {lokalita}<br><sup>" + popis_filtru + "</sup>",
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'font': {'size': 16, 'color': COLORS['dark']}
+                    },
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    height=600,  # Zvětšíme výšku pro dva grafy
+                    margin=dict(l=50, r=50, t=80, b=50),
+                    showlegend=True,
+                    legend=dict(
+                        orientation='h',
+                        yanchor='bottom',
+                        y=1.02,
+                        xanchor='right',
+                        x=1
+                    )
+                )
+                
+                # Nastavení os
+                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)', row=1, col=1)
+                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)', title_text="Rok", row=2, col=1)
+                
+                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)', 
+                                title_text="Meziroční nárůst [%]", row=1, col=1)
+                
+                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)', 
+                                title_text="Cena tepla [Kč/GJ]", row=2, col=1)
+                
+            except Exception as e:
+                import traceback
+                print(f"Chyba při vytváření grafu pro lokalitu: {e}")
+                traceback.print_exc()
+                
+                # Vytvoření prázdného grafu v případě chyby
+                fig = go.Figure()
+                fig.update_layout(
+                    title={
+                        'text': f"Chyba při zobrazení grafu pro lokalitu {lokalita}<br><sup>" + popis_filtru + "</sup>",
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'font': {'size': 16, 'color': COLORS['dark']}
+                    },
+                    xaxis_title="Rok",
+                    yaxis_title="Meziroční nárůst [%]",
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    height=400,
+                    margin={"r": 20, "t": 60, "l": 20, "b": 20}
+                )
+                fig.add_annotation(
+                    text=f"Došlo k chybě: {str(e)}",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5,
+                    showarrow=False,
+                    font=dict(size=14, color=COLORS['accent'])
+                )
         else:
-            # Pokud není vybrána konkrétní lokalita, zobrazíme trendy podle krajů
-            # Nejprve získáme unikátní kódy krajů
-            unikatni_kraje = filtrovana_data['Kod_kraje'].unique()
-            
-            # Vytvoříme slovník pro mapování kódů krajů na jejich názvy
-            kody_na_nazvy = {v: k for k, v in nazvy_na_kody.items()}
-            
-            # Pro každý kraj vytvoříme čáru v grafu
-            for kod_kraje in unikatni_kraje:
-                # Filtrování dat pro konkrétní kraj
-                data_kraje = filtrovana_data[filtrovana_data['Kod_kraje'] == kod_kraje]
-                
-                # Výpočet průměrných cen podle roku
-                agregace_kraje = data_kraje.groupby(['Rok'])['Cena'].mean().reset_index()
-                
-                # Získání názvu kraje
-                nazev_kraje = kody_na_nazvy.get(kod_kraje, str(kod_kraje))
-                
-                # Přidání čáry pro kraj
-                fig.add_trace(go.Scatter(
-                    x=agregace_kraje['Rok'],
-                    y=agregace_kraje['Cena'],
-                    name=nazev_kraje,
-                    mode='lines+markers',
-                    hovertemplate='Rok: %{x}<br>Cena: %{y:.2f} Kč/GJ<extra>' + nazev_kraje + '</extra>'
-                ))
-            
-            # Nastavení layoutu grafu
+            # Pokud není vybrána konkrétní lokalita, zobrazíme informační zprávu
+            fig = go.Figure()
             fig.update_layout(
                 title={
-                    'text': "Vývoj cen tepla podle krajů<br><sup>" + popis_filtru + "</sup>",
+                    'text': "Meziroční nárůst cen tepla<br><sup>" + popis_filtru + "</sup>",
                     'x': 0.5,
                     'xanchor': 'center',
                     'font': {'size': 16, 'color': COLORS['dark']}
                 },
-                xaxis=dict(
-                    title='Rok',
-                    tickmode='linear',
-                    dtick=1
-                ),
-                yaxis=dict(
-                    title='Cena tepla [Kč/GJ]',
-                    titlefont=dict(color=COLORS['dark']),
-                    tickfont=dict(color=COLORS['dark'])
-                ),
-                legend=dict(
-                    orientation='h',
-                    yanchor='bottom',
-                    y=1.02,
-                    xanchor='right',
-                    x=1
-                ),
+                xaxis_title="Rok",
+                yaxis_title="Meziroční nárůst [%]",
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
-                margin=dict(l=50, r=50, t=80, b=50),
-                height=400
+                height=400,
+                margin={"r": 20, "t": 60, "l": 20, "b": 20}
             )
-            
-            # Přidání anotace s výzvou k výběru lokality
             fig.add_annotation(
                 text="Pro zobrazení meziročního nárůstu cen vyberte konkrétní lokalitu",
                 xref="paper", yref="paper",
-                x=0.5, y=0.02,
+                x=0.5, y=0.5,
                 showarrow=False,
-                font=dict(size=12, color=COLORS['accent']),
+                font=dict(size=14, color=COLORS['dark']),
                 bgcolor="rgba(255, 255, 255, 0.7)",
                 bordercolor=COLORS['accent'],
                 borderwidth=1,
                 borderpad=4
             )
-            
-            # Přidání mřížky
-            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)')
-            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)')
         
         return fig
     
