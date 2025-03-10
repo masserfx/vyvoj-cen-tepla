@@ -1,0 +1,173 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ010",
+        "name": "Hlavní město Praha",
+        "code": "A"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[14.224, 50.016], [14.706, 50.016], [14.706, 50.177], [14.224, 50.177], [14.224, 50.016]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ020",
+        "name": "Středočeský kraj",
+        "code": "S"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[13.9, 49.5], [15.2, 49.5], [15.2, 50.5], [13.9, 50.5], [13.9, 49.5]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ031",
+        "name": "Jihočeský kraj",
+        "code": "C"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[13.5, 48.5], [15.0, 48.5], [15.0, 49.5], [13.5, 49.5], [13.5, 48.5]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ032",
+        "name": "Plzeňský kraj",
+        "code": "P"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[12.5, 49.0], [13.5, 49.0], [13.5, 50.0], [12.5, 50.0], [12.5, 49.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ041",
+        "name": "Karlovarský kraj",
+        "code": "K"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[12.0, 50.0], [13.0, 50.0], [13.0, 50.5], [12.0, 50.5], [12.0, 50.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ042",
+        "name": "Ústecký kraj",
+        "code": "U"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[13.0, 50.0], [14.5, 50.0], [14.5, 51.0], [13.0, 51.0], [13.0, 50.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ051",
+        "name": "Liberecký kraj",
+        "code": "L"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[14.5, 50.5], [15.5, 50.5], [15.5, 51.0], [14.5, 51.0], [14.5, 50.5]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ052",
+        "name": "Královéhradecký kraj",
+        "code": "H"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[15.5, 50.0], [16.5, 50.0], [16.5, 50.8], [15.5, 50.8], [15.5, 50.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ053",
+        "name": "Pardubický kraj",
+        "code": "E"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[15.5, 49.5], [16.5, 49.5], [16.5, 50.0], [15.5, 50.0], [15.5, 49.5]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ063",
+        "name": "Kraj Vysočina",
+        "code": "J"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[15.0, 49.0], [16.0, 49.0], [16.0, 49.8], [15.0, 49.8], [15.0, 49.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ064",
+        "name": "Jihomoravský kraj",
+        "code": "B"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[16.0, 48.5], [17.0, 48.5], [17.0, 49.5], [16.0, 49.5], [16.0, 48.5]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ071",
+        "name": "Olomoucký kraj",
+        "code": "M"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[16.5, 49.5], [17.5, 49.5], [17.5, 50.5], [16.5, 50.5], [16.5, 49.5]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ072",
+        "name": "Zlínský kraj",
+        "code": "Z"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[17.0, 49.0], [18.0, 49.0], [18.0, 49.6], [17.0, 49.6], [17.0, 49.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "CZ080",
+        "name": "Moravskoslezský kraj",
+        "code": "T"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[17.5, 49.5], [18.5, 49.5], [18.5, 50.0], [17.5, 50.0], [17.5, 49.5]]]
+      }
+    }
+  ]
+}
