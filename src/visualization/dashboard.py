@@ -1251,7 +1251,7 @@ def aktualizuj_graf_mezirocniho_narustu(typ_dodavky, kraj_nazev, vybrana_paliva,
                 agregace_kraje = data_kraje.groupby(['Rok'])['Cena'].mean().reset_index()
                 
                 # Získání názvu kraje
-                nazev_kraje = kody_na_nazvy.get(kod_kraje, kod_kraje)
+                nazev_kraje = kody_na_nazvy.get(kod_kraje, str(kod_kraje))
                 
                 # Přidání čáry pro kraj
                 fig.add_trace(go.Scatter(
