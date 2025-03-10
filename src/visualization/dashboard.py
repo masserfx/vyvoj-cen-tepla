@@ -1036,134 +1036,275 @@ def aktualizuj_graf_vyvoje_cen(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita
      Input('kraj-dropdown', 'value'),
      Input('paliva-checklist', 'value'),
      Input('lokalita-dropdown', 'value'),
-     Input('vykon-range-slider', 'value')]
+     Input('vykon-range-slider', 'value'),
+     Input('predbezne-ceny-radio', 'value')]
 )
-def aktualizuj_graf_mezirocniho_narustu(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range):
+def aktualizuj_graf_mezirocniho_narustu(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range, predbezne_ceny):
     """Aktualizuje graf meziročního nárůstu cen tepla."""
     try:
-        if df.empty:
-            return go.Figure().update_layout(title="Žádná data k dispozici")
+        # Vytvoření popisu filtrů
+        popis_filtru = vytvor_popis_filtru(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range, None, predbezne_ceny)
         
-        # Převod názvu kraje na kód
-        kraj = None
-        if kraj_nazev and 'Kod_kraje' in df.columns:
-            kraj = nazvy_na_kody.get(kraj_nazev)
+        if df.empty:
+            # Vytvoření prázdného grafu
+            fig = go.Figure()
+            fig.update_layout(
+                title={
+                    'text': "Meziroční nárůst cen tepla<br><sup>" + popis_filtru + "</sup>",
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'font': {'size': 16, 'color': COLORS['dark']}
+                },
+                xaxis_title="Rok",
+                yaxis_title="Meziroční nárůst [%]",
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                height=400,
+                margin={"r": 20, "t": 60, "l": 20, "b": 20}
+            )
+            fig.add_annotation(
+                text="Žádná data k zobrazení",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14, color=COLORS['dark'])
+            )
+            return fig
         
         # Vytvoření kopie dat pro filtrování
         filtrovana_data = df.copy()
         
         # Filtrování podle typu dodávky
-        if typ_dodavky != 'Celkový průměr' and 'Typ_dodavky' in filtrovana_data.columns:
+        if typ_dodavky != 'Celkový průměr':
             filtrovana_data = filtrovana_data[filtrovana_data['Typ_dodavky'] == typ_dodavky]
         
         # Filtrování podle kraje
-        if kraj and 'Kod_kraje' in filtrovana_data.columns:
-            filtrovana_data = filtrovana_data[filtrovana_data['Kod_kraje'] == kraj]
-        
-        # Filtrování podle paliv
-        if vybrana_paliva and 'Palivo' in filtrovana_data.columns and 'Všechna paliva' not in vybrana_paliva:
-            filtrovana_data = filtrovana_data[filtrovana_data['Palivo'].isin(vybrana_paliva)]
+        if kraj_nazev:
+            kraj = nazvy_na_kody.get(kraj_nazev)
+            if kraj:
+                filtrovana_data = filtrovana_data[filtrovana_data['Kod_kraje'] == kraj]
         
         # Filtrování podle lokality
-        if lokalita and 'Lokalita' in filtrovana_data.columns:
+        if lokalita:
             filtrovana_data = filtrovana_data[filtrovana_data['Lokalita'] == lokalita]
         
-        # Filtrování podle výkonu
-        if vykon_range and 'Instalovany_vykon' in filtrovana_data.columns:
+        # Filtrování podle instalovaného výkonu
+        if vykon_range:
             min_vykon, max_vykon = vykon_range
-            # Kontrola, zda sloupec Instalovany_vykon existuje a není prázdný
-            if 'Instalovany_vykon' not in filtrovana_data.columns:
-                filtrovana_data['Instalovany_vykon'] = 0
+            # Ujistíme se, že sloupec obsahuje numerické hodnoty
+            filtrovana_data['Instalovany_vykon'] = pd.to_numeric(filtrovana_data['Instalovany_vykon'], errors='coerce')
             # Nahrazení chybějících hodnot nulou
             filtrovana_data['Instalovany_vykon'] = filtrovana_data['Instalovany_vykon'].fillna(0)
             # Filtrujeme pouze řádky, kde Instalovany_vykon není NaN
             filtrovana_data = filtrovana_data[filtrovana_data['Instalovany_vykon'].notna()]
             # Filtrujeme podle rozsahu
             filtrovana_data = filtrovana_data[(filtrovana_data['Instalovany_vykon'] >= min_vykon) & 
-                                (filtrovana_data['Instalovany_vykon'] <= max_vykon)]
+                                 (filtrovana_data['Instalovany_vykon'] <= max_vykon)]
+        
+        # Filtrování podle vybraných paliv
+        if vybrana_paliva and len(vybrana_paliva) > 0 and vybrana_paliva != ['Všechna paliva']:
+            # Mapování názvů paliv na sloupce v datech
+            nazvy_paliv_reverse = {
+                'Uhlí': 'Uhli_procento',
+                'Biomasa': 'Biomasa_procento',
+                'Odpad': 'Odpad_procento',
+                'Zemní plyn': 'Zemni_plyn_procento',
+                'Jiná paliva': 'Jina_paliva_procento'
+            }
+            
+            # Vytvoříme masku pro filtrování
+            maska = pd.Series(False, index=filtrovana_data.index)
+            
+            for palivo in vybrana_paliva:
+                palivo_sloupec = nazvy_paliv_reverse.get(palivo, palivo.replace(' ', '_') + '_procento')
+                if palivo_sloupec in df.columns:
+                    maska = maska | (filtrovana_data[palivo_sloupec] > 50)
+            
+            filtrovana_data = filtrovana_data[maska]
+        
+        # Filtrování předběžných cen
+        if predbezne_ceny == 'vysledne':
+            filtrovana_data = filtrovana_data[filtrovana_data['Typ_ceny'] != 'Předběžná']
         
         # Kontrola, zda máme data po filtrování
         if filtrovana_data.empty:
-            return go.Figure().update_layout(title="Po aplikaci filtrů nezbyly žádné záznamy")
-        
-        # Kontrola, zda existuje sloupec Typ_ceny
-        if 'Typ_ceny' not in filtrovana_data.columns:
-            filtrovana_data['Typ_ceny'] = 'Výsledná'
-        
-        # Výpočet průměrných cen podle roku a typu ceny
-        agregace = filtrovana_data.groupby(['Rok', 'Typ_ceny'])['Cena'].mean().reset_index()
-        
-        # Vytvoření pivot tabulky s roky jako indexem a typy cen jako sloupci
-        pivot = agregace.pivot(index='Rok', columns='Typ_ceny', values='Cena')
-        
-        # Výpočet meziročního nárůstu pro výsledné ceny
-        if 'Výsledná' in pivot.columns:
-            pivot['Meziroční_nárůst'] = pivot['Výsledná'].pct_change() * 100
-        else:
-            # Pokud nemáme sloupec 'Výsledná', použijeme první dostupný sloupec
-            first_col = pivot.columns[0]
-            pivot['Meziroční_nárůst'] = pivot[first_col].pct_change() * 100
-        
-        # Resetování indexu
-        pivot = pivot.reset_index()
+            # Vytvoření prázdného grafu
+            fig = go.Figure()
+            fig.update_layout(
+                title={
+                    'text': "Meziroční nárůst cen tepla<br><sup>" + popis_filtru + "</sup>",
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'font': {'size': 16, 'color': COLORS['dark']}
+                },
+                xaxis_title="Rok",
+                yaxis_title="Meziroční nárůst [%]",
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                height=400,
+                margin={"r": 20, "t": 60, "l": 20, "b": 20}
+            )
+            fig.add_annotation(
+                text="Žádná data k zobrazení pro vybrané filtry",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14, color=COLORS['dark'])
+            )
+            return fig
         
         # Vytvoření grafu
         fig = go.Figure()
         
-        # Přidání sloupců pro meziroční nárůst
-        fig.add_trace(go.Bar(
-            x=pivot['Rok'],
-            y=pivot['Meziroční_nárůst'],
-            name='Meziroční nárůst [%]',
-            marker_color=COLORS['accent'],
-            hovertemplate='Rok: %{x}<br>Meziroční nárůst: %{y:.2f}%<extra></extra>'
-        ))
-        
-        # Přidání čáry pro cenu
-        if 'Výsledná' in pivot.columns:
-            fig.add_trace(go.Scatter(
+        # Pokud je vybrána konkrétní lokalita, zobrazíme vývoj cen pro tuto lokalitu
+        if lokalita:
+            # Výpočet průměrných cen podle roku a typu ceny
+            agregace = filtrovana_data.groupby(['Rok', 'Typ_ceny'])['Cena'].mean().reset_index()
+            
+            # Vytvoření pivot tabulky s roky jako indexem a typy cen jako sloupci
+            pivot = agregace.pivot(index='Rok', columns='Typ_ceny', values='Cena')
+            
+            # Výpočet meziročního nárůstu pro výsledné ceny
+            if 'Výsledná' in pivot.columns:
+                pivot['Meziroční_nárůst'] = pivot['Výsledná'].pct_change() * 100
+            else:
+                # Pokud nemáme sloupec 'Výsledná', použijeme první dostupný sloupec
+                first_col = pivot.columns[0]
+                pivot['Meziroční_nárůst'] = pivot[first_col].pct_change() * 100
+            
+            # Resetování indexu
+            pivot = pivot.reset_index()
+            
+            # Přidání sloupců pro meziroční nárůst
+            fig.add_trace(go.Bar(
                 x=pivot['Rok'],
-                y=pivot['Výsledná'],
-                name='Cena tepla [Kč/GJ]',
-                mode='lines+markers',
-                marker=dict(color=COLORS['primary']),
-                line=dict(color=COLORS['primary'], width=2),
-                yaxis='y2',
-                hovertemplate='Rok: %{x}<br>Cena: %{y:.2f} Kč/GJ<extra></extra>'
+                y=pivot['Meziroční_nárůst'],
+                name='Meziroční nárůst [%]',
+                marker_color=COLORS['accent'],
+                hovertemplate='Rok: %{x}<br>Meziroční nárůst: %{y:.2f}%<extra></extra>'
             ))
-        
-        # Nastavení layoutu grafu
-        fig.update_layout(
-            title=f"Meziroční nárůst cen tepla {typ_dodavky}" + (f" - {kraj_nazev}" if kraj_nazev else ""),
-            xaxis=dict(
-                title='Rok',
-                tickmode='linear',
-                dtick=1
-            ),
-            yaxis=dict(
-                title='Meziroční nárůst [%]',
-                titlefont=dict(color=COLORS['accent']),
-                tickfont=dict(color=COLORS['accent'])
-            ),
-            yaxis2=dict(
-                title='Cena tepla [Kč/GJ]',
-                titlefont=dict(color=COLORS['primary']),
-                tickfont=dict(color=COLORS['primary']),
-                overlaying='y',
-                side='right'
-            ),
-            legend=dict(
-                orientation='h',
-                yanchor='bottom',
-                y=1.02,
-                xanchor='right',
-                x=1
-            ),
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            margin=dict(l=50, r=50, t=80, b=50),
-            height=400
-        )
+            
+            # Přidání čáry pro cenu
+            if 'Výsledná' in pivot.columns:
+                fig.add_trace(go.Scatter(
+                    x=pivot['Rok'],
+                    y=pivot['Výsledná'],
+                    name='Cena tepla [Kč/GJ]',
+                    mode='lines+markers',
+                    marker=dict(color=COLORS['primary']),
+                    line=dict(color=COLORS['primary'], width=2),
+                    yaxis='y2',
+                    hovertemplate='Rok: %{x}<br>Cena: %{y:.2f} Kč/GJ<extra></extra>'
+                ))
+            
+            # Nastavení layoutu grafu
+            fig.update_layout(
+                title={
+                    'text': f"Meziroční nárůst cen tepla - {lokalita}<br><sup>" + popis_filtru + "</sup>",
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'font': {'size': 16, 'color': COLORS['dark']}
+                },
+                xaxis=dict(
+                    title='Rok',
+                    tickmode='linear',
+                    dtick=1
+                ),
+                yaxis=dict(
+                    title='Meziroční nárůst [%]',
+                    titlefont=dict(color=COLORS['accent']),
+                    tickfont=dict(color=COLORS['accent'])
+                ),
+                yaxis2=dict(
+                    title='Cena tepla [Kč/GJ]',
+                    titlefont=dict(color=COLORS['primary']),
+                    tickfont=dict(color=COLORS['primary']),
+                    overlaying='y',
+                    side='right'
+                ),
+                legend=dict(
+                    orientation='h',
+                    yanchor='bottom',
+                    y=1.02,
+                    xanchor='right',
+                    x=1
+                ),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                margin=dict(l=50, r=50, t=80, b=50),
+                height=400
+            )
+        else:
+            # Pokud není vybrána konkrétní lokalita, zobrazíme trendy podle krajů
+            # Nejprve získáme unikátní kódy krajů
+            unikatni_kraje = filtrovana_data['Kod_kraje'].unique()
+            
+            # Vytvoříme slovník pro mapování kódů krajů na jejich názvy
+            kody_na_nazvy = {v: k for k, v in nazvy_na_kody.items()}
+            
+            # Pro každý kraj vytvoříme čáru v grafu
+            for kod_kraje in unikatni_kraje:
+                # Filtrování dat pro konkrétní kraj
+                data_kraje = filtrovana_data[filtrovana_data['Kod_kraje'] == kod_kraje]
+                
+                # Výpočet průměrných cen podle roku
+                agregace_kraje = data_kraje.groupby(['Rok'])['Cena'].mean().reset_index()
+                
+                # Získání názvu kraje
+                nazev_kraje = kody_na_nazvy.get(kod_kraje, kod_kraje)
+                
+                # Přidání čáry pro kraj
+                fig.add_trace(go.Scatter(
+                    x=agregace_kraje['Rok'],
+                    y=agregace_kraje['Cena'],
+                    name=nazev_kraje,
+                    mode='lines+markers',
+                    hovertemplate='Rok: %{x}<br>Cena: %{y:.2f} Kč/GJ<extra>' + nazev_kraje + '</extra>'
+                ))
+            
+            # Nastavení layoutu grafu
+            fig.update_layout(
+                title={
+                    'text': "Vývoj cen tepla podle krajů<br><sup>" + popis_filtru + "</sup>",
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'font': {'size': 16, 'color': COLORS['dark']}
+                },
+                xaxis=dict(
+                    title='Rok',
+                    tickmode='linear',
+                    dtick=1
+                ),
+                yaxis=dict(
+                    title='Cena tepla [Kč/GJ]',
+                    titlefont=dict(color=COLORS['dark']),
+                    tickfont=dict(color=COLORS['dark'])
+                ),
+                legend=dict(
+                    orientation='h',
+                    yanchor='bottom',
+                    y=1.02,
+                    xanchor='right',
+                    x=1
+                ),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                margin=dict(l=50, r=50, t=80, b=50),
+                height=400
+            )
+            
+            # Přidání anotace s výzvou k výběru lokality
+            fig.add_annotation(
+                text="Pro zobrazení meziročního nárůstu cen vyberte konkrétní lokalitu",
+                xref="paper", yref="paper",
+                x=0.5, y=0.02,
+                showarrow=False,
+                font=dict(size=12, color=COLORS['accent']),
+                bgcolor="rgba(255, 255, 255, 0.7)",
+                bordercolor=COLORS['accent'],
+                borderwidth=1,
+                borderpad=4
+            )
         
         # Přidání mřížky
         fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)')
@@ -1172,14 +1313,36 @@ def aktualizuj_graf_mezirocniho_narustu(typ_dodavky, kraj_nazev, vybrana_paliva,
         return fig
     
     except Exception as e:
+        import traceback
         print(f"Chyba při aktualizaci grafu meziročního nárůstu: {e}")
+        traceback.print_exc()
+        
         # Vytvoření prázdného grafu v případě chyby
         fig = go.Figure()
+        
+        # Vytvoření popisu filtrů
+        popis_filtru = vytvor_popis_filtru(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range, None, predbezne_ceny)
+        
         fig.update_layout(
-            title="Chyba při zobrazení grafu meziročního nárůstu",
+            title={
+                'text': "Chyba při zobrazení grafu meziročního nárůstu<br><sup>" + popis_filtru + "</sup>",
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 16, 'color': COLORS['dark']}
+            },
+            xaxis_title="Rok",
+            yaxis_title="Meziroční nárůst [%]",
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
-            height=400
+            height=400,
+            margin={"r": 20, "t": 60, "l": 20, "b": 20}
+        )
+        fig.add_annotation(
+            text=f"Došlo k chybě: {str(e)}",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(size=14, color=COLORS['accent'])
         )
         return fig
 
