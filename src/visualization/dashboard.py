@@ -272,6 +272,48 @@ def vypocet_agregace():
     
     return result
 
+# Funkce pro vytvoření popisu filtrů
+def vytvor_popis_filtru(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range, cena_range=None, predbezne_ceny=None):
+    """Vytvoří popis aktuálně vybraných filtrů."""
+    filtry_info = []
+    
+    # Přidání informace o typu dodávky
+    if typ_dodavky and typ_dodavky != 'Celkový průměr':
+        filtry_info.append(f"Typ dodávky: {typ_dodavky}")
+    
+    # Přidání informace o kraji
+    if kraj_nazev:
+        filtry_info.append(f"Kraj: {kraj_nazev}")
+    
+    # Přidání informace o lokalitě
+    if lokalita:
+        filtry_info.append(f"Lokalita: {lokalita}")
+    
+    # Přidání informace o výkonu
+    if vykon_range and vykon_range != [0, 6324]:
+        filtry_info.append(f"Výkon: {vykon_range[0]}-{vykon_range[1]} MW")
+    
+    # Přidání informace o cenách
+    if cena_range and cena_range != [0, 2500]:
+        filtry_info.append(f"Cena: {cena_range[0]}-{cena_range[1]} Kč/GJ")
+    
+    # Přidání informace o palivech
+    if vybrana_paliva and len(vybrana_paliva) < 5:
+        filtry_info.append(f"Paliva: {', '.join(vybrana_paliva)}")
+    
+    # Přidání informace o předběžných cenách
+    if predbezne_ceny:
+        if predbezne_ceny == 'ano':
+            filtry_info.append("Včetně předběžných cen")
+        elif predbezne_ceny == 'vysledne':
+            filtry_info.append("Pouze výsledné ceny")
+    
+    # Sestavení výsledného textu
+    if filtry_info:
+        return f"Filtry: {'; '.join(filtry_info)}"
+    else:
+        return "Všechna data bez filtrování"
+
 # Získání seznamu unikátních typů dodávek pro dropdown
 typy_dodavek = ['Celkový průměr']
 if not df.empty:
@@ -781,219 +823,209 @@ app.layout = html.Div([
      Input('predbezne-ceny-radio', 'value')]
 )
 def aktualizuj_graf_vyvoje_cen(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range, predbezne_ceny):
-    """
-    Aktualizuje graf vývoje cen tepla na základě vybraných filtrů.
-    """
+    """Aktualizuje graf vývoje cen tepla v čase."""
     try:
-        # Filtrování dat podle vybraných parametrů
-        filtered_df = df.copy()
+        # Filtrování dat podle vybraných filtrů
+        filtrovana_data = df.copy()
         
         # Filtrování podle typu dodávky
         if typ_dodavky != 'Celkový průměr':
-            filtered_df = filtered_df[filtered_df['Typ_dodavky'] == typ_dodavky]
+            filtrovana_data = filtrovana_data[filtrovana_data['Typ_dodavky'] == typ_dodavky]
         
         # Filtrování podle kraje
-        if kraj_nazev is not None and kraj_nazev != 'Všechny kraje':
-            # Zkontrolujeme, zda existuje sloupec 'Kraj_nazev' nebo 'Kod_kraje'
-            if 'Kraj_nazev' in filtered_df.columns:
-                filtered_df = filtered_df[filtered_df['Kraj_nazev'] == kraj_nazev]
-            elif 'Kod_kraje' in filtered_df.columns:
-                # Převod názvu kraje na kód
-                kraj_kod = nazvy_na_kody.get(kraj_nazev)
-                if kraj_kod:
-                    filtered_df = filtered_df[filtered_df['Kod_kraje'] == kraj_kod]
-        
-        # Filtrování podle paliv
-        if vybrana_paliva and 'Všechna paliva' not in vybrana_paliva:
-            # Zkontrolujeme, zda existuje sloupec 'Palivo'
-            if 'Palivo' in filtered_df.columns:
-                filtered_df = filtered_df[filtered_df['Palivo'].isin(vybrana_paliva)]
-            else:
-                # Mapování názvů paliv na sloupce v datech
-                nazvy_paliv_reverse = {
-                    'Uhlí': 'Uhli_procento',
-                    'Biomasa': 'Biomasa_procento',
-                    'Odpad': 'Odpad_procento',
-                    'Zemní plyn': 'Zemni_plyn_procento',
-                    'Jiná paliva': 'Jina_paliva_procento'
-                }
-                
-                # Vytvoříme masku pro filtrování
-                maska = pd.Series(False, index=filtered_df.index)
-                
-                for palivo in vybrana_paliva:
-                    palivo_sloupec = nazvy_paliv_reverse.get(palivo, palivo.replace(' ', '_') + '_procento')
-                    if palivo_sloupec in filtered_df.columns:
-                        maska = maska | (filtered_df[palivo_sloupec] > 50)
-                
-                filtered_df = filtered_df[maska]
+        if kraj_nazev:
+            kraj = nazvy_na_kody.get(kraj_nazev)
+            if kraj:
+                filtrovana_data = filtrovana_data[filtrovana_data['Kod_kraje'] == kraj]
         
         # Filtrování podle lokality
-        if lokalita is not None and lokalita != 'Všechny lokality':
-            if 'Lokalita' in filtered_df.columns:
-                filtered_df = filtered_df[filtered_df['Lokalita'] == lokalita]
+        if lokalita:
+            filtrovana_data = filtrovana_data[filtrovana_data['Lokalita'] == lokalita]
         
-        # Filtrování podle výkonu
-        min_vykon, max_vykon = vykon_range
-        if 'Instalovany_vykon' in filtered_df.columns:
-            filtered_df = filtered_df[(filtered_df['Instalovany_vykon'] >= min_vykon) & 
-                                    (filtered_df['Instalovany_vykon'] <= max_vykon)]
+        # Filtrování podle instalovaného výkonu
+        if vykon_range:
+            min_vykon, max_vykon = vykon_range
+            # Ujistíme se, že sloupec obsahuje numerické hodnoty
+            filtrovana_data['Instalovany_vykon'] = pd.to_numeric(filtrovana_data['Instalovany_vykon'], errors='coerce')
+            # Nahrazení chybějících hodnot nulou
+            filtrovana_data['Instalovany_vykon'] = filtrovana_data['Instalovany_vykon'].fillna(0)
+            # Filtrujeme pouze řádky, kde Instalovany_vykon není NaN
+            filtrovana_data = filtrovana_data[filtrovana_data['Instalovany_vykon'].notna()]
+            # Filtrujeme podle rozsahu
+            filtrovana_data = filtrovana_data[(filtrovana_data['Instalovany_vykon'] >= min_vykon) & 
+                                 (filtrovana_data['Instalovany_vykon'] <= max_vykon)]
         
-        # Filtrování podle typu ceny (předběžná/výsledná)
+        # Filtrování podle vybraných paliv
+        if vybrana_paliva and len(vybrana_paliva) > 0 and vybrana_paliva != ['Všechna paliva']:
+            # Mapování názvů paliv na sloupce v datech
+            nazvy_paliv_reverse = {
+                'Uhlí': 'Uhli_procento',
+                'Biomasa': 'Biomasa_procento',
+                'Odpad': 'Odpad_procento',
+                'Zemní plyn': 'Zemni_plyn_procento',
+                'Jiná paliva': 'Jina_paliva_procento'
+            }
+            
+            # Vytvoříme masku pro filtrování
+            maska = pd.Series(False, index=filtrovana_data.index)
+            
+            for palivo in vybrana_paliva:
+                palivo_sloupec = nazvy_paliv_reverse.get(palivo, palivo.replace(' ', '_') + '_procento')
+                if palivo_sloupec in df.columns:
+                    maska = maska | (filtrovana_data[palivo_sloupec] > 50)
+            
+            filtrovana_data = filtrovana_data[maska]
+        
+        # Filtrování předběžných cen
         if predbezne_ceny == 'vysledne':
-            if 'Predbezna_cena' in filtered_df.columns:
-                filtered_df = filtered_df[filtered_df['Predbezna_cena'] == False]
-            elif 'Typ_ceny' in filtered_df.columns:
-                filtered_df = filtered_df[filtered_df['Typ_ceny'] != 'Předběžná']
+            filtrovana_data = filtrovana_data[filtrovana_data['Typ_ceny'] != 'Předběžná']
+        
+        # Vytvoření popisu filtrů
+        popis_filtru = vytvor_popis_filtru(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range, None, predbezne_ceny)
         
         # Kontrola, zda máme data po filtrování
-        if filtered_df.empty:
+        if filtrovana_data.empty:
             # Vytvoření prázdného grafu
             fig = go.Figure()
             fig.update_layout(
-                title="Po aplikaci filtrů nezbyly žádné záznamy",
-                xaxis={'visible': False},
-                yaxis={'visible': False},
-                annotations=[{
-                    'text': "Po aplikaci filtrů nezbyly žádné záznamy",
-                    'xref': 'paper',
-                    'yref': 'paper',
-                    'showarrow': False,
+                title={
+                    'text': "Vývoj cen tepla v čase<br><sup>" + popis_filtru + "</sup>",
+                    'x': 0.5,
+                    'xanchor': 'center',
                     'font': {'size': 16, 'color': COLORS['dark']}
-                }],
-                plot_bgcolor='rgba(255, 255, 255, 0.0)',
-                paper_bgcolor='rgba(255, 255, 255, 0.0)'
+                },
+                xaxis_title="Rok",
+                yaxis_title="Cena tepla [Kč/GJ]",
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                height=400,
+                margin={"r": 20, "t": 60, "l": 20, "b": 20}
+            )
+            fig.add_annotation(
+                text="Žádná data k zobrazení pro vybrané filtry",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14, color=COLORS['dark'])
             )
             return fig
         
-        # Výpočet průměrných cen podle roku
-        # Zkontrolujeme, zda existuje sloupec 'Cena_tepla' nebo 'Cena'
-        cena_sloupec = 'Cena_tepla' if 'Cena_tepla' in filtered_df.columns else 'Cena'
-        avg_prices = filtered_df.groupby('Rok')[cena_sloupec].mean().reset_index()
+        # Agregace dat podle roku a typu ceny
+        agregace = filtrovana_data.groupby(['Rok', 'Typ_ceny'])['Cena'].mean().reset_index()
+        
+        # Pivot tabulka pro zobrazení
+        pivot_data = agregace.pivot(index='Rok', columns='Typ_ceny', values='Cena').reset_index()
+        
+        # Seřazení podle roku
+        pivot_data = pivot_data.sort_values('Rok')
         
         # Vytvoření grafu
         fig = go.Figure()
         
-        # Přidání čáry s průměrnými cenami
-        fig.add_trace(go.Scatter(
-            x=avg_prices['Rok'],
-            y=avg_prices[cena_sloupec],
-            mode='lines+markers',
-            name='Průměrná cena tepla',
-            line=dict(color=COLORS['primary'], width=3),
-            marker=dict(
-                size=10,
-                color=COLORS['primary'],
-                line=dict(color='white', width=2)
-            ),
-            hovertemplate='Rok: %{x}<br>Průměrná cena: %{y:.2f} Kč/GJ<extra></extra>'
-        ))
+        # Přidání čáry pro výsledné ceny
+        if 'Výsledná' in pivot_data.columns:
+            fig.add_trace(go.Scatter(
+                x=pivot_data['Rok'],
+                y=pivot_data['Výsledná'],
+                mode='lines+markers',
+                name='Výsledná cena tepla',
+                line=dict(color=COLORS['primary'], width=3),
+                marker=dict(size=8, color=COLORS['primary']),
+                hovertemplate='%{x}: %{y:.2f} Kč/GJ<extra></extra>'
+            ))
         
-        # Přidání rozsahu nejistoty (min-max)
-        min_prices = filtered_df.groupby('Rok')[cena_sloupec].min().reset_index()
-        max_prices = filtered_df.groupby('Rok')[cena_sloupec].max().reset_index()
+        # Přidání čáry pro předběžné ceny
+        if 'Předběžná' in pivot_data.columns and predbezne_ceny == 'ano':
+            fig.add_trace(go.Scatter(
+                x=pivot_data['Rok'],
+                y=pivot_data['Předběžná'],
+                mode='lines+markers',
+                name='Předběžná cena tepla',
+                line=dict(color=COLORS['accent'], width=2, dash='dash'),
+                marker=dict(size=8, color=COLORS['accent']),
+                hovertemplate='%{x}: %{y:.2f} Kč/GJ<extra></extra>'
+            ))
         
-        # Přidání oblasti mezi minimem a maximem
-        fig.add_trace(go.Scatter(
-            x=min_prices['Rok'].tolist() + max_prices['Rok'].tolist()[::-1],
-            y=min_prices[cena_sloupec].tolist() + max_prices[cena_sloupec].tolist()[::-1],
-            fill='toself',
-            fillcolor='rgba(58, 134, 255, 0.2)',
-            line=dict(color='rgba(58, 134, 255, 0)'),
-            hoverinfo='skip',
-            showlegend=False
-        ))
+        # Přidání oblasti pro zvýraznění trendu
+        if 'Výsledná' in pivot_data.columns:
+            fig.add_trace(go.Scatter(
+                x=pivot_data['Rok'],
+                y=pivot_data['Výsledná'],
+                mode='none',
+                fill='tozeroy',
+                fillcolor='rgba(58, 134, 255, 0.2)',
+                hoverinfo='none',
+                showlegend=False
+            ))
         
         # Nastavení layoutu grafu
         fig.update_layout(
             title={
-                'text': f'Vývoj průměrných cen tepla v čase',
-                'y': 0.95,
+                'text': "Vývoj cen tepla v čase<br><sup>" + popis_filtru + "</sup>",
                 'x': 0.5,
                 'xanchor': 'center',
-                'yanchor': 'top',
-                'font': {'size': 20, 'color': COLORS['dark'], 'family': '"Poppins", "Segoe UI", Arial, sans-serif'}
+                'font': {'size': 16, 'color': COLORS['dark']}
             },
-            xaxis={
-                'title': 'Rok',
-                'gridcolor': 'rgba(220, 220, 220, 0.5)',
-                'showgrid': True,
-                'zeroline': False,
-                'title_font': {'size': 14, 'color': COLORS['dark']},
-                'tickfont': {'size': 12, 'color': COLORS['dark']}
-            },
-            yaxis={
-                'title': 'Cena tepla [Kč/GJ]',
-                'gridcolor': 'rgba(220, 220, 220, 0.5)',
-                'showgrid': True,
-                'zeroline': False,
-                'title_font': {'size': 14, 'color': COLORS['dark']},
-                'tickfont': {'size': 12, 'color': COLORS['dark']}
-            },
-            plot_bgcolor='rgba(255, 255, 255, 0.0)',
-            paper_bgcolor='rgba(255, 255, 255, 0.0)',
-            hovermode='x unified',
-            legend={
-                'orientation': 'h',
-                'yanchor': 'bottom',
-                'y': 1.02,
-                'xanchor': 'right',
-                'x': 1,
-                'font': {'size': 12, 'color': COLORS['dark']}
-            },
-            margin={'l': 40, 'r': 40, 't': 80, 'b': 40},
-            height=450,
-            transition_duration=500
+            xaxis_title="Rok",
+            yaxis_title="Cena tepla [Kč/GJ]",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            height=400,
+            margin={"r": 20, "t": 60, "l": 20, "b": 20},
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            xaxis=dict(
+                showgrid=True,
+                gridcolor='rgba(0,0,0,0.1)',
+                tickmode='linear',
+                dtick=1
+            ),
+            yaxis=dict(
+                showgrid=True,
+                gridcolor='rgba(0,0,0,0.1)',
+                zeroline=True,
+                zerolinecolor='rgba(0,0,0,0.2)',
+                zerolinewidth=1
+            )
         )
         
-        # Přidání anotace s filtry
-        filter_text = []
-        if typ_dodavky != 'Celkový průměr':
-            filter_text.append(f"Typ dodávky: {typ_dodavky}")
-        if kraj_nazev is not None and kraj_nazev != 'Všechny kraje':
-            filter_text.append(f"Kraj: {kraj_nazev}")
-        if lokalita is not None and lokalita != 'Všechny lokality':
-            filter_text.append(f"Lokalita: {lokalita}")
-        if vybrana_paliva and 'Všechna paliva' not in vybrana_paliva:
-            filter_text.append(f"Paliva: {', '.join(vybrana_paliva)}")
-        filter_text.append(f"Výkon: {min_vykon}-{max_vykon} MW")
-        
-        if filter_text:
-            fig.add_annotation(
-                text='<br>'.join(filter_text),
-                align='left',
-                showarrow=False,
-                xref='paper',
-                yref='paper',
-                x=0.01,
-                y=0.99,
-                bordercolor=COLORS['primary'],
-                borderwidth=1,
-                borderpad=4,
-                bgcolor='rgba(255, 255, 255, 0.7)',
-                font={'size': 10, 'color': COLORS['dark']},
-                opacity=0.8
-            )
-        
         return fig
-    
     except Exception as e:
+        import traceback
         print(f"Chyba při aktualizaci grafu vývoje cen: {e}")
+        traceback.print_exc()
+        
         # Vytvoření prázdného grafu v případě chyby
         fig = go.Figure()
+        
+        # Vytvoření popisu filtrů
+        popis_filtru = vytvor_popis_filtru(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range, None, predbezne_ceny)
+        
         fig.update_layout(
-            title="Nepodařilo se načíst data pro graf vývoje cen",
-            xaxis={'visible': False},
-            yaxis={'visible': False},
-            annotations=[{
-                'text': f"Chyba: {str(e)}",
-                'xref': 'paper',
-                'yref': 'paper',
-                'showarrow': False,
-                'font': {'size': 14, 'color': COLORS['accent']}
-            }],
-            plot_bgcolor='rgba(255, 255, 255, 0.0)',
-            paper_bgcolor='rgba(255, 255, 255, 0.0)'
+            title={
+                'text': "Chyba při zobrazení grafu vývoje cen<br><sup>" + popis_filtru + "</sup>",
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 16, 'color': COLORS['dark']}
+            },
+            xaxis_title="Rok",
+            yaxis_title="Cena tepla [Kč/GJ]",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            height=400,
+            margin={"r": 20, "t": 60, "l": 20, "b": 20}
+        )
+        fig.add_annotation(
+            text=f"Došlo k chybě: {str(e)}",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(size=14, color=COLORS['accent'])
         )
         return fig
 
@@ -1815,6 +1847,9 @@ def aktualizuj_mapu_cr(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_
             except Exception as e:
                 print(f"Chyba při filtrování podle ceny: {e}")
         
+        # Vytvoření popisu filtrů
+        popis_filtru = vytvor_popis_filtru(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range, cena_range, predbezne_ceny)
+        
         # Kontrola, zda máme data po filtrování
         if filtrovana_data.empty:
             print("Po filtrování nezbyly žádné záznamy")
@@ -1827,9 +1862,14 @@ def aktualizuj_mapu_cr(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_
                 ),
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
-                margin={"r": 0, "t": 0, "l": 0, "b": 0},
+                margin={"r": 0, "t": 30, "l": 0, "b": 0},
                 height=600,
-                title="Žádná data pro zobrazení"
+                title={
+                    'text': "Mapa cen tepla v ČR<br><sup>" + popis_filtru + "</sup>",
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'font': {'size': 16, 'color': COLORS['dark']}
+                }
             )
             
             return fig
@@ -1946,9 +1986,15 @@ def aktualizuj_mapu_cr(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_
             ),
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
-            margin={"r": 0, "t": 0, "l": 0, "b": 0},
+            margin={"r": 0, "t": 30, "l": 0, "b": 0},
             height=600,
-            showlegend=False
+            showlegend=False,
+            title={
+                'text': "Mapa cen tepla v ČR<br><sup>" + popis_filtru + "</sup>",
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 16, 'color': COLORS['dark']}
+            }
         )
         
         print("Mapa úspěšně vytvořena")
@@ -1961,6 +2007,9 @@ def aktualizuj_mapu_cr(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_
         # Vytvoření prázdné mapy v případě chyby
         fig = go.Figure()
         
+        # Vytvoření popisu filtrů
+        popis_filtru = vytvor_popis_filtru(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range, cena_range, predbezne_ceny)
+        
         # Přidání mapového podkladu
         fig.update_layout(
             mapbox=dict(
@@ -1970,9 +2019,14 @@ def aktualizuj_mapu_cr(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_
             ),
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
-            margin={"r": 0, "t": 0, "l": 0, "b": 0},
+            margin={"r": 0, "t": 30, "l": 0, "b": 0},
             height=600,
-            title="Chyba při zobrazení mapy"
+            title={
+                'text': "Chyba při zobrazení mapy<br><sup>" + popis_filtru + "</sup>",
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 16, 'color': COLORS['dark']}
+            }
         )
         
         return fig
@@ -2144,6 +2198,406 @@ def aktualizuj_ai_prognozu(forecast_method, typ_dodavky, kraj_nazev, vybrana_pal
             }],
             plot_bgcolor='rgba(255, 255, 255, 0.0)',
             paper_bgcolor='rgba(255, 255, 255, 0.0)'
+        )
+        return fig
+
+@callback(
+    Output('porovnani-cen-graf', 'figure'),
+    [Input('typ-dodavky-dropdown', 'value'),
+     Input('kraj-dropdown', 'value'),
+     Input('paliva-checklist', 'value'),
+     Input('lokalita-dropdown', 'value'),
+     Input('vykon-range-slider', 'value'),
+     Input('cena-range-slider', 'value'),
+     Input('predbezne-ceny-radio', 'value')]
+)
+def aktualizuj_graf_porovnani_cen(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range, cena_range, predbezne_ceny):
+    """Aktualizuje graf porovnání cen tepla podle typu dodávky."""
+    try:
+        # Filtrování dat podle vybraných filtrů
+        filtrovana_data = df.copy()
+        
+        # Filtrování podle typu dodávky
+        if typ_dodavky != 'Celkový průměr':
+            filtrovana_data = filtrovana_data[filtrovana_data['Typ_dodavky'] == typ_dodavky]
+        
+        # Filtrování podle kraje
+        if kraj_nazev:
+            kraj = nazvy_na_kody.get(kraj_nazev)
+            if kraj:
+                filtrovana_data = filtrovana_data[filtrovana_data['Kod_kraje'] == kraj]
+        
+        # Filtrování podle lokality
+        if lokalita:
+            filtrovana_data = filtrovana_data[filtrovana_data['Lokalita'] == lokalita]
+        
+        # Filtrování podle instalovaného výkonu
+        if vykon_range:
+            min_vykon, max_vykon = vykon_range
+            # Ujistíme se, že sloupec obsahuje numerické hodnoty
+            filtrovana_data['Instalovany_vykon'] = pd.to_numeric(filtrovana_data['Instalovany_vykon'], errors='coerce')
+            # Nahrazení chybějících hodnot nulou
+            filtrovana_data['Instalovany_vykon'] = filtrovana_data['Instalovany_vykon'].fillna(0)
+            # Filtrujeme pouze řádky, kde Instalovany_vykon není NaN
+            filtrovana_data = filtrovana_data[filtrovana_data['Instalovany_vykon'].notna()]
+            # Filtrujeme podle rozsahu
+            filtrovana_data = filtrovana_data[(filtrovana_data['Instalovany_vykon'] >= min_vykon) & 
+                                 (filtrovana_data['Instalovany_vykon'] <= max_vykon)]
+        
+        # Filtrování podle ceny
+        if cena_range:
+            min_cena, max_cena = cena_range
+            # Ujistíme se, že sloupec obsahuje numerické hodnoty
+            filtrovana_data['Cena'] = pd.to_numeric(filtrovana_data['Cena'], errors='coerce')
+            # Filtrujeme pouze řádky, kde Cena není NaN
+            filtrovana_data = filtrovana_data[filtrovana_data['Cena'].notna()]
+            # Filtrujeme podle rozsahu
+            filtrovana_data = filtrovana_data[(filtrovana_data['Cena'] >= min_cena) & 
+                                 (filtrovana_data['Cena'] <= max_cena)]
+        
+        # Filtrování podle vybraných paliv
+        if vybrana_paliva and len(vybrana_paliva) > 0 and vybrana_paliva != ['Všechna paliva']:
+            # Mapování názvů paliv na sloupce v datech
+            nazvy_paliv_reverse = {
+                'Uhlí': 'Uhli_procento',
+                'Biomasa': 'Biomasa_procento',
+                'Odpad': 'Odpad_procento',
+                'Zemní plyn': 'Zemni_plyn_procento',
+                'Jiná paliva': 'Jina_paliva_procento'
+            }
+            
+            # Vytvoříme masku pro filtrování
+            maska = pd.Series(False, index=filtrovana_data.index)
+            
+            for palivo in vybrana_paliva:
+                palivo_sloupec = nazvy_paliv_reverse.get(palivo, palivo.replace(' ', '_') + '_procento')
+                if palivo_sloupec in df.columns:
+                    maska = maska | (filtrovana_data[palivo_sloupec] > 50)
+            
+            filtrovana_data = filtrovana_data[maska]
+        
+        # Filtrování předběžných cen
+        if predbezne_ceny == 'vysledne':
+            filtrovana_data = filtrovana_data[filtrovana_data['Typ_ceny'] != 'Předběžná']
+        
+        # Vytvoření popisu filtrů
+        popis_filtru = vytvor_popis_filtru(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range, cena_range, predbezne_ceny)
+        
+        # Kontrola, zda máme data po filtrování
+        if filtrovana_data.empty:
+            # Vytvoření prázdného grafu
+            fig = go.Figure()
+            fig.update_layout(
+                title={
+                    'text': "Porovnání cen tepla podle typu dodávky<br><sup>" + popis_filtru + "</sup>",
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'font': {'size': 16, 'color': COLORS['dark']}
+                },
+                xaxis_title="Typ dodávky",
+                yaxis_title="Cena tepla [Kč/GJ]",
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                height=400,
+                margin={"r": 20, "t": 60, "l": 20, "b": 20}
+            )
+            fig.add_annotation(
+                text="Žádná data k zobrazení pro vybrané filtry",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14, color=COLORS['dark'])
+            )
+            return fig
+        
+        # Získání posledního roku v datech
+        posledni_rok = filtrovana_data['Rok'].max()
+        
+        # Filtrování dat pouze pro poslední rok
+        data_posledni_rok = filtrovana_data[filtrovana_data['Rok'] == posledni_rok]
+        
+        # Agregace dat podle typu dodávky
+        agregace = data_posledni_rok.groupby('Typ_dodavky')['Cena'].agg(['mean', 'count']).reset_index()
+        
+        # Seřazení podle průměrné ceny
+        agregace = agregace.sort_values('mean', ascending=False)
+        
+        # Vytvoření grafu
+        fig = go.Figure()
+        
+        # Přidání sloupců pro každý typ dodávky
+        fig.add_trace(go.Bar(
+            x=agregace['Typ_dodavky'],
+            y=agregace['mean'],
+            text=agregace['mean'].round(2).astype(str) + ' Kč/GJ',
+            textposition='auto',
+            marker_color=COLORS['primary'],
+            hovertemplate='%{x}<br>Průměrná cena: %{y:.2f} Kč/GJ<br>Počet lokalit: %{customdata}<extra></extra>',
+            customdata=agregace['count']
+        ))
+        
+        # Nastavení layoutu grafu
+        fig.update_layout(
+            title={
+                'text': f"Porovnání cen tepla podle typu dodávky ({posledni_rok})<br><sup>" + popis_filtru + "</sup>",
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 16, 'color': COLORS['dark']}
+            },
+            xaxis_title="Typ dodávky",
+            yaxis_title="Cena tepla [Kč/GJ]",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            height=400,
+            margin={"r": 20, "t": 60, "l": 20, "b": 20},
+            xaxis=dict(
+                tickangle=-45,
+                tickfont=dict(size=10)
+            ),
+            yaxis=dict(
+                showgrid=True,
+                gridcolor='rgba(0,0,0,0.1)',
+                zeroline=True,
+                zerolinecolor='rgba(0,0,0,0.2)',
+                zerolinewidth=1
+            )
+        )
+        
+        return fig
+    except Exception as e:
+        import traceback
+        print(f"Chyba při aktualizaci grafu porovnání cen: {e}")
+        traceback.print_exc()
+        
+        # Vytvoření prázdného grafu v případě chyby
+        fig = go.Figure()
+        
+        # Vytvoření popisu filtrů
+        popis_filtru = vytvor_popis_filtru(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range, cena_range, predbezne_ceny)
+        
+        fig.update_layout(
+            title={
+                'text': "Chyba při zobrazení grafu porovnání cen<br><sup>" + popis_filtru + "</sup>",
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 16, 'color': COLORS['dark']}
+            },
+            xaxis_title="Typ dodávky",
+            yaxis_title="Cena tepla [Kč/GJ]",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            height=400,
+            margin={"r": 20, "t": 60, "l": 20, "b": 20}
+        )
+        fig.add_annotation(
+            text=f"Došlo k chybě: {str(e)}",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(size=14, color=COLORS['accent'])
+        )
+        return fig
+
+@callback(
+    Output('porovnani-paliv-graf', 'figure'),
+    [Input('typ-dodavky-dropdown', 'value'),
+     Input('kraj-dropdown', 'value'),
+     Input('paliva-checklist', 'value'),
+     Input('lokalita-dropdown', 'value'),
+     Input('vykon-range-slider', 'value'),
+     Input('cena-range-slider', 'value'),
+     Input('predbezne-ceny-radio', 'value')]
+)
+def aktualizuj_graf_porovnani_paliv(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range, cena_range, predbezne_ceny):
+    """Aktualizuje graf porovnání cen tepla podle převažujícího paliva."""
+    try:
+        # Filtrování dat podle vybraných filtrů
+        filtrovana_data = df.copy()
+        
+        # Filtrování podle typu dodávky
+        if typ_dodavky != 'Celkový průměr':
+            filtrovana_data = filtrovana_data[filtrovana_data['Typ_dodavky'] == typ_dodavky]
+        
+        # Filtrování podle kraje
+        if kraj_nazev:
+            kraj = nazvy_na_kody.get(kraj_nazev)
+            if kraj:
+                filtrovana_data = filtrovana_data[filtrovana_data['Kod_kraje'] == kraj]
+        
+        # Filtrování podle lokality
+        if lokalita:
+            filtrovana_data = filtrovana_data[filtrovana_data['Lokalita'] == lokalita]
+        
+        # Filtrování podle instalovaného výkonu
+        if vykon_range:
+            min_vykon, max_vykon = vykon_range
+            # Ujistíme se, že sloupec obsahuje numerické hodnoty
+            filtrovana_data['Instalovany_vykon'] = pd.to_numeric(filtrovana_data['Instalovany_vykon'], errors='coerce')
+            # Nahrazení chybějících hodnot nulou
+            filtrovana_data['Instalovany_vykon'] = filtrovana_data['Instalovany_vykon'].fillna(0)
+            # Filtrujeme pouze řádky, kde Instalovany_vykon není NaN
+            filtrovana_data = filtrovana_data[filtrovana_data['Instalovany_vykon'].notna()]
+            # Filtrujeme podle rozsahu
+            filtrovana_data = filtrovana_data[(filtrovana_data['Instalovany_vykon'] >= min_vykon) & 
+                                 (filtrovana_data['Instalovany_vykon'] <= max_vykon)]
+        
+        # Filtrování podle ceny
+        if cena_range:
+            min_cena, max_cena = cena_range
+            # Ujistíme se, že sloupec obsahuje numerické hodnoty
+            filtrovana_data['Cena'] = pd.to_numeric(filtrovana_data['Cena'], errors='coerce')
+            # Filtrujeme pouze řádky, kde Cena není NaN
+            filtrovana_data = filtrovana_data[filtrovana_data['Cena'].notna()]
+            # Filtrujeme podle rozsahu
+            filtrovana_data = filtrovana_data[(filtrovana_data['Cena'] >= min_cena) & 
+                                 (filtrovana_data['Cena'] <= max_cena)]
+        
+        # Filtrování předběžných cen
+        if predbezne_ceny == 'vysledne':
+            filtrovana_data = filtrovana_data[filtrovana_data['Typ_ceny'] != 'Předběžná']
+        
+        # Vytvoření popisu filtrů
+        popis_filtru = vytvor_popis_filtru(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range, cena_range, predbezne_ceny)
+        
+        # Kontrola, zda máme data po filtrování
+        if filtrovana_data.empty:
+            # Vytvoření prázdného grafu
+            fig = go.Figure()
+            fig.update_layout(
+                title={
+                    'text': "Porovnání cen tepla podle převažujícího paliva<br><sup>" + popis_filtru + "</sup>",
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'font': {'size': 16, 'color': COLORS['dark']}
+                },
+                xaxis_title="Převažující palivo",
+                yaxis_title="Cena tepla [Kč/GJ]",
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                height=400,
+                margin={"r": 20, "t": 60, "l": 20, "b": 20}
+            )
+            fig.add_annotation(
+                text="Žádná data k zobrazení pro vybrané filtry",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14, color=COLORS['dark'])
+            )
+            return fig
+        
+        # Získání posledního roku v datech
+        posledni_rok = filtrovana_data['Rok'].max()
+        
+        # Filtrování dat pouze pro poslední rok
+        data_posledni_rok = filtrovana_data[filtrovana_data['Rok'] == posledni_rok]
+        
+        # Určení převažujícího paliva pro každý záznam
+        paliva_sloupce = ['Uhli_procento', 'Biomasa_procento', 'Odpad_procento', 'Zemni_plyn_procento', 'Jina_paliva_procento']
+        
+        # Vytvoření sloupce s převažujícím palivem
+        def najdi_prevazujici_palivo(row):
+            max_palivo = None
+            max_procento = 0
+            for palivo_sloupec in paliva_sloupce:
+                if palivo_sloupec in row and pd.notna(row[palivo_sloupec]) and row[palivo_sloupec] > max_procento:
+                    max_procento = row[palivo_sloupec]
+                    max_palivo = palivo_sloupec
+            
+            if max_palivo:
+                # Převod názvu sloupce na čitelný název paliva
+                nazvy_paliv = {
+                    'Uhli_procento': 'Uhlí',
+                    'Biomasa_procento': 'Biomasa',
+                    'Odpad_procento': 'Odpad',
+                    'Zemni_plyn_procento': 'Zemní plyn',
+                    'Jina_paliva_procento': 'Jiná paliva'
+                }
+                return nazvy_paliv.get(max_palivo, max_palivo.replace('_procento', ''))
+            else:
+                return 'Neurčeno'
+        
+        data_posledni_rok['Prevazujici_palivo'] = data_posledni_rok.apply(najdi_prevazujici_palivo, axis=1)
+        
+        # Agregace dat podle převažujícího paliva
+        agregace = data_posledni_rok.groupby('Prevazujici_palivo')['Cena'].agg(['mean', 'count']).reset_index()
+        
+        # Seřazení podle průměrné ceny
+        agregace = agregace.sort_values('mean', ascending=False)
+        
+        # Vytvoření grafu
+        fig = go.Figure()
+        
+        # Přidání sloupců pro každý typ paliva
+        fig.add_trace(go.Bar(
+            x=agregace['Prevazujici_palivo'],
+            y=agregace['mean'],
+            text=agregace['mean'].round(2).astype(str) + ' Kč/GJ',
+            textposition='auto',
+            marker_color=COLORS['primary'],
+            hovertemplate='%{x}<br>Průměrná cena: %{y:.2f} Kč/GJ<br>Počet lokalit: %{customdata}<extra></extra>',
+            customdata=agregace['count']
+        ))
+        
+        # Nastavení layoutu grafu
+        fig.update_layout(
+            title={
+                'text': f"Porovnání cen tepla podle převažujícího paliva ({posledni_rok})<br><sup>" + popis_filtru + "</sup>",
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 16, 'color': COLORS['dark']}
+            },
+            xaxis_title="Převažující palivo",
+            yaxis_title="Cena tepla [Kč/GJ]",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            height=400,
+            margin={"r": 20, "t": 60, "l": 20, "b": 20},
+            xaxis=dict(
+                tickangle=-45,
+                tickfont=dict(size=10)
+            ),
+            yaxis=dict(
+                showgrid=True,
+                gridcolor='rgba(0,0,0,0.1)',
+                zeroline=True,
+                zerolinecolor='rgba(0,0,0,0.2)',
+                zerolinewidth=1
+            )
+        )
+        
+        return fig
+    except Exception as e:
+        import traceback
+        print(f"Chyba při aktualizaci grafu porovnání paliv: {e}")
+        traceback.print_exc()
+        
+        # Vytvoření prázdného grafu v případě chyby
+        fig = go.Figure()
+        
+        # Vytvoření popisu filtrů
+        popis_filtru = vytvor_popis_filtru(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_range, cena_range, predbezne_ceny)
+        
+        fig.update_layout(
+            title={
+                'text': "Chyba při zobrazení grafu porovnání paliv<br><sup>" + popis_filtru + "</sup>",
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 16, 'color': COLORS['dark']}
+            },
+            xaxis_title="Převažující palivo",
+            yaxis_title="Cena tepla [Kč/GJ]",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            height=400,
+            margin={"r": 20, "t": 60, "l": 20, "b": 20}
+        )
+        fig.add_annotation(
+            text=f"Došlo k chybě: {str(e)}",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(size=14, color=COLORS['accent'])
         )
         return fig
 
