@@ -1962,40 +1962,68 @@ def aktualizuj_mapu_cr(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_
     try:
         print(f"Aktualizuji mapu s parametry: typ_dodavky={typ_dodavky}, kraj_nazev={kraj_nazev}, vybrana_paliva={vybrana_paliva}, lokalita={lokalita}, vykon_range={vykon_range}, cena_range={cena_range}, predbezne_ceny={predbezne_ceny}")
         
-        # Vytvoření základní mapy
+        # Vytvoření prázdné mapy
         fig = go.Figure()
         
-        # Filtrování dat podle vybraných filtrů
-        filtrovana_data = df.copy()
-        print(f"Počet řádků před filtrováním: {len(filtrovana_data)}")
+        if df.empty:
+            print("DataFrame je prázdný")
+            # Vytvoření prázdné mapy
+            fig.update_layout(
+                mapbox=dict(
+                    style="carto-positron",
+                    zoom=5.5,
+                    center={"lat": 49.8, "lon": 15.5},
+                ),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                margin={"r": 0, "t": 30, "l": 0, "b": 0},
+                height=600,
+                title={
+                    'text': "Mapa cen tepla v ČR<br><sup>Žádná data k dispozici</sup>",
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'font': {'size': 16, 'color': COLORS['dark']}
+                }
+            )
+            return fig
         
-        # Filtrování podle typu ceny (předběžná/výsledná)
-        if predbezne_ceny == 'vysledne':
-            if 'Predbezna_cena' in filtrovana_data.columns:
-                filtrovana_data = filtrovana_data[filtrovana_data['Predbezna_cena'] == False]
-            elif 'Typ_ceny' in filtrovana_data.columns:
-                filtrovana_data = filtrovana_data[filtrovana_data['Typ_ceny'] != 'Předběžná']
-            print(f"Počet řádků po filtrování podle typu ceny: {len(filtrovana_data)}")
+        # Vytvoření kopie dat pro filtrování
+        filtrovana_data = df.copy()
         
         # Filtrování podle typu dodávky
-        if typ_dodavky != 'Celkový průměr' and 'Typ_dodavky' in filtrovana_data.columns:
+        if typ_dodavky != 'Celkový průměr':
             filtrovana_data = filtrovana_data[filtrovana_data['Typ_dodavky'] == typ_dodavky]
-            print(f"Počet řádků po filtrování podle typu dodávky: {len(filtrovana_data)}")
         
         # Filtrování podle kraje
-        if kraj_nazev and 'Kod_kraje' in filtrovana_data.columns:
+        if kraj_nazev:
             kraj = nazvy_na_kody.get(kraj_nazev)
             if kraj:
                 filtrovana_data = filtrovana_data[filtrovana_data['Kod_kraje'] == kraj]
-                print(f"Počet řádků po filtrování podle kraje: {len(filtrovana_data)}")
         
-        # Filtrování podle paliv
-        if vybrana_paliva and 'Palivo' in filtrovana_data.columns and 'Všechna paliva' not in vybrana_paliva:
-            filtrovana_data = filtrovana_data[filtrovana_data['Palivo'].isin(vybrana_paliva)]
+        # Filtrování podle vybraných paliv
+        if vybrana_paliva and len(vybrana_paliva) > 0 and vybrana_paliva != ['Všechna paliva']:
+            # Mapování názvů paliv na sloupce v datech
+            nazvy_paliv_reverse = {
+                'Uhlí': 'Uhli_procento',
+                'Biomasa': 'Biomasa_procento',
+                'Odpad': 'Odpad_procento',
+                'Zemní plyn': 'Zemni_plyn_procento',
+                'Jiná paliva': 'Jina_paliva_procento'
+            }
+            
+            # Vytvoříme masku pro filtrování
+            maska = pd.Series(False, index=filtrovana_data.index)
+            
+            for palivo in vybrana_paliva:
+                palivo_sloupec = nazvy_paliv_reverse.get(palivo, palivo.replace(' ', '_') + '_procento')
+                if palivo_sloupec in df.columns:
+                    maska = maska | (filtrovana_data[palivo_sloupec] > 50)
+            
+            filtrovana_data = filtrovana_data[maska]
             print(f"Počet řádků po filtrování podle paliv: {len(filtrovana_data)}")
         
         # Filtrování podle lokality
-        if lokalita and 'Lokalita' in filtrovana_data.columns:
+        if lokalita:
             filtrovana_data = filtrovana_data[filtrovana_data['Lokalita'] == lokalita]
             print(f"Počet řádků po filtrování podle lokality: {len(filtrovana_data)}")
         
@@ -2115,10 +2143,12 @@ def aktualizuj_mapu_cr(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_
                     texts = []
                     colors = []
                     sizes = []
+                    lokalita_names = []  # Seznam pro ukládání názvů lokalit
                     
                     for _, row in lokality_data.iterrows():
                         lats.append(row['lat'])
                         lons.append(row['lon'])
+                        lokalita_names.append(row['Lokalita'])  # Uložení názvu lokality
                         
                         # Přidání informace o původní ceně, pokud byla omezena
                         puvodni_cena = row[cena_sloupec]
@@ -2131,9 +2161,14 @@ def aktualizuj_mapu_cr(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_
                             
                         texts.append(text)
                         colors.append(kraje_barvy.get(row['Kod_kraje'], '#3a86ff'))
-                        sizes.append(10)
+                        
+                        # Zvýrazníme vybranou lokalitu větším bodem
+                        if row['Lokalita'] == lokalita:
+                            sizes.append(15)  # Větší velikost pro vybranou lokalitu
+                        else:
+                            sizes.append(10)  # Standardní velikost pro ostatní lokality
                     
-                    # Přidání bodů na mapu
+                    # Přidání bodů na mapu s customdata pro identifikaci lokality při kliknutí
                     fig.add_trace(go.Scattermapbox(
                         lat=lats,
                         lon=lons,
@@ -2144,7 +2179,8 @@ def aktualizuj_mapu_cr(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_
                             opacity=0.8
                         ),
                         text=texts,
-                        hoverinfo='text'
+                        hoverinfo='text',
+                        customdata=lokalita_names,  # Přidání názvů lokalit jako customdata
                     ))
                     
                     print("Body lokalit úspěšně přidány na mapu")
@@ -2172,7 +2208,8 @@ def aktualizuj_mapu_cr(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_
                 'x': 0.5,
                 'xanchor': 'center',
                 'font': {'size': 16, 'color': COLORS['dark']}
-            }
+            },
+            clickmode='event+select',  # Povolení klikání na body
         )
         
         print("Mapa úspěšně vytvořena")
@@ -2208,6 +2245,38 @@ def aktualizuj_mapu_cr(typ_dodavky, kraj_nazev, vybrana_paliva, lokalita, vykon_
         )
         
         return fig
+
+# Callback pro aktualizaci dropdown menu po kliknutí na bod v mapě
+@callback(
+    Output('lokalita-dropdown', 'value'),
+    [Input('mapa-cr', 'clickData')],
+    [State('lokalita-dropdown', 'options')]
+)
+def aktualizuj_lokalitu_z_mapy(clickData, options):
+    """Aktualizuje vybranou lokalitu po kliknutí na bod v mapě."""
+    if clickData is None:
+        # Pokud uživatel neklikl na žádný bod, necháme hodnotu beze změny
+        raise dash.exceptions.PreventUpdate
+    
+    try:
+        # Získání názvu lokality z customdata kliknutého bodu
+        lokalita_name = clickData['points'][0]['customdata']
+        
+        # Kontrola, zda je lokalita v seznamu možností
+        dostupne_lokality = [opt['value'] for opt in options] if options else []
+        
+        if lokalita_name in dostupne_lokality:
+            print(f"Vybrána lokalita z mapy: {lokalita_name}")
+            return lokalita_name
+        else:
+            print(f"Lokalita {lokalita_name} není v seznamu dostupných lokalit")
+            raise dash.exceptions.PreventUpdate
+    
+    except Exception as e:
+        print(f"Chyba při aktualizaci lokality z mapy: {e}")
+        import traceback
+        traceback.print_exc()
+        raise dash.exceptions.PreventUpdate
 
 # Přidání callbacku pro synchronizaci mezi slidery a manuálními vstupy
 @callback(
