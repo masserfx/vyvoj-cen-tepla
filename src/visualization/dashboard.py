@@ -1169,14 +1169,42 @@ def aktualizuj_graf_mezirocniho_narustu(typ_dodavky, kraj_nazev, vybrana_paliva,
                 pivot['Meziroční_nárůst'] = pivot['Výsledná'].pct_change() * 100
             else:
                 # Pokud nemáme sloupec 'Výsledná', použijeme první dostupný sloupec
-                first_col = pivot.columns[0]
-                pivot['Meziroční_nárůst'] = pivot[first_col].pct_change() * 100
+                if not pivot.empty and len(pivot.columns) > 0:
+                    first_col = pivot.columns[0]
+                    pivot['Meziroční_nárůst'] = pivot[first_col].pct_change() * 100
+                else:
+                    # Pokud nemáme žádná data, vytvoříme prázdný graf
+                    fig = go.Figure()
+                    fig.update_layout(
+                        title={
+                            'text': f"Meziroční nárůst cen tepla - {lokalita}<br><sup>" + popis_filtru + "</sup>",
+                            'x': 0.5,
+                            'xanchor': 'center',
+                            'font': {'size': 16, 'color': COLORS['dark']}
+                        },
+                        xaxis_title="Rok",
+                        yaxis_title="Meziroční nárůst [%]",
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        height=400,
+                        margin={"r": 20, "t": 60, "l": 20, "b": 20}
+                    )
+                    fig.add_annotation(
+                        text="Nedostatek dat pro výpočet meziročního nárůstu",
+                        xref="paper", yref="paper",
+                        x=0.5, y=0.5,
+                        showarrow=False,
+                        font=dict(size=14, color=COLORS['dark'])
+                    )
+                    return fig
             
             # Resetování indexu
             pivot = pivot.reset_index()
             
-            # Přidání sloupců pro meziroční nárůst
-            fig.add_trace(go.Bar(
+            # Vytvoříme dva samostatné grafy místo jednoho s dvěma osami
+            # Graf 1: Meziroční nárůst
+            fig1 = go.Figure()
+            fig1.add_trace(go.Bar(
                 x=pivot['Rok'],
                 y=pivot['Meziroční_nárůst'],
                 name='Meziroční nárůst [%]',
@@ -1184,21 +1212,7 @@ def aktualizuj_graf_mezirocniho_narustu(typ_dodavky, kraj_nazev, vybrana_paliva,
                 hovertemplate='Rok: %{x}<br>Meziroční nárůst: %{y:.2f}%<extra></extra>'
             ))
             
-            # Přidání čáry pro cenu
-            if 'Výsledná' in pivot.columns:
-                fig.add_trace(go.Scatter(
-                    x=pivot['Rok'],
-                    y=pivot['Výsledná'],
-                    name='Cena tepla [Kč/GJ]',
-                    mode='lines+markers',
-                    marker=dict(color=COLORS['primary']),
-                    line=dict(color=COLORS['primary'], width=2),
-                    yaxis='y2',
-                    hovertemplate='Rok: %{x}<br>Cena: %{y:.2f} Kč/GJ<extra></extra>'
-                ))
-            
-            # Nastavení layoutu grafu
-            fig.update_layout(
+            fig1.update_layout(
                 title={
                     'text': f"Meziroční nárůst cen tepla - {lokalita}<br><sup>" + popis_filtru + "</sup>",
                     'x': 0.5,
@@ -1215,25 +1229,96 @@ def aktualizuj_graf_mezirocniho_narustu(typ_dodavky, kraj_nazev, vybrana_paliva,
                     titlefont=dict(color=COLORS['accent']),
                     tickfont=dict(color=COLORS['accent'])
                 ),
-                yaxis2=dict(
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                margin=dict(l=50, r=50, t=80, b=50),
+                height=400
+            )
+            
+            # Graf 2: Vývoj cen
+            fig2 = go.Figure()
+            if 'Výsledná' in pivot.columns:
+                fig2.add_trace(go.Scatter(
+                    x=pivot['Rok'],
+                    y=pivot['Výsledná'],
+                    name='Cena tepla [Kč/GJ]',
+                    mode='lines+markers',
+                    marker=dict(color=COLORS['primary']),
+                    line=dict(color=COLORS['primary'], width=2),
+                    hovertemplate='Rok: %{x}<br>Cena: %{y:.2f} Kč/GJ<extra></extra>'
+                ))
+            
+            fig2.update_layout(
+                title={
+                    'text': f"Vývoj cen tepla - {lokalita}<br><sup>" + popis_filtru + "</sup>",
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'font': {'size': 16, 'color': COLORS['dark']}
+                },
+                xaxis=dict(
+                    title='Rok',
+                    tickmode='linear',
+                    dtick=1
+                ),
+                yaxis=dict(
                     title='Cena tepla [Kč/GJ]',
                     titlefont=dict(color=COLORS['primary']),
-                    tickfont=dict(color=COLORS['primary']),
-                    overlaying='y',
-                    side='right'
-                ),
-                legend=dict(
-                    orientation='h',
-                    yanchor='bottom',
-                    y=1.02,
-                    xanchor='right',
-                    x=1
+                    tickfont=dict(color=COLORS['primary'])
                 ),
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
                 margin=dict(l=50, r=50, t=80, b=50),
                 height=400
             )
+            
+            # Kombinujeme grafy do jednoho pomocí subplots
+            from plotly.subplots import make_subplots
+            
+            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1,
+                               subplot_titles=(f"Meziroční nárůst cen tepla - {lokalita}", f"Vývoj cen tepla - {lokalita}"))
+            
+            # Přidáme stopy z prvního grafu
+            for trace in fig1.data:
+                fig.add_trace(trace, row=1, col=1)
+            
+            # Přidáme stopy z druhého grafu
+            for trace in fig2.data:
+                fig.add_trace(trace, row=2, col=1)
+            
+            # Nastavení layoutu
+            fig.update_layout(
+                title={
+                    'text': f"Analýza cen tepla - {lokalita}<br><sup>" + popis_filtru + "</sup>",
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'font': {'size': 16, 'color': COLORS['dark']}
+                },
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                height=600,  # Zvětšíme výšku pro dva grafy
+                margin=dict(l=50, r=50, t=80, b=50),
+                showlegend=True,
+                legend=dict(
+                    orientation='h',
+                    yanchor='bottom',
+                    y=1.02,
+                    xanchor='right',
+                    x=1
+                )
+            )
+            
+            # Nastavení os
+            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)', row=1, col=1)
+            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)', title_text="Rok", row=2, col=1)
+            
+            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)', 
+                            title_text="Meziroční nárůst [%]", title_font=dict(color=COLORS['accent']),
+                            tickfont=dict(color=COLORS['accent']), row=1, col=1)
+            
+            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)', 
+                            title_text="Cena tepla [Kč/GJ]", title_font=dict(color=COLORS['primary']),
+                            tickfont=dict(color=COLORS['primary']), row=2, col=1)
+            
         else:
             # Pokud není vybrána konkrétní lokalita, zobrazíme trendy podle krajů
             # Nejprve získáme unikátní kódy krajů
@@ -1305,10 +1390,10 @@ def aktualizuj_graf_mezirocniho_narustu(typ_dodavky, kraj_nazev, vybrana_paliva,
                 borderwidth=1,
                 borderpad=4
             )
-        
-        # Přidání mřížky
-        fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)')
-        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)')
+            
+            # Přidání mřížky
+            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)')
+            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.1)')
         
         return fig
     
